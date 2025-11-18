@@ -23,6 +23,7 @@ class Baresip {
     constructor(processPathOrOptions, callbacks = {}) {
         this.connected = false;
         this.callbacks = {};
+        this.onHold = false;
 
         // Soportar API antigua (string) y nueva (objeto de opciones)
         if (typeof processPathOrOptions === 'string') {
@@ -63,6 +64,9 @@ class Baresip {
             'dial',
             'hangUp',
             'toggleCallMuted',
+            'hold',
+            'resume',
+            'toggleHold',
         ].forEach((method) => {
             this[method] = this[method].bind(this);
         });
@@ -71,26 +75,7 @@ class Baresip {
     accept() {
         executeCommand('a');
     }
-
-    hold() {
-    if (!this.process || !this.process.stdin) {
-      console.warn('[BARESIP WRAPPER] hold: process not running')
-      return
-    }
-
-    // 'x' = HOLD CALL en la CLI de baresip
-    this.process.stdin.write('x\n')
-  }
-
-  resume() {
-    if (!this.process || !this.process.stdin) {
-      console.warn('[BARESIP WRAPPER] resume: process not running')
-      return
-    }
-
-    // 'X' = RESUME CALL en la CLI de baresip
-    this.process.stdin.write('X\n')
-  }
+    
 
     dial(phoneNumber) {
         executeCommand(`d${phoneNumber}`);
@@ -102,6 +87,39 @@ class Baresip {
 
     toggleCallMuted() {
         executeCommand('m');
+    }
+
+    // Poner la llamada en espera (HOLD) usando la CLI de baresip (stdio)
+    hold() {
+        if (!this.process || !this.process.stdin) {
+            console.warn('[BARESIP WRAPPER] hold: process not running');
+            return;
+        }
+
+        // 'x' = HOLD CALL en la interfaz stdio de baresip
+        this.process.stdin.write('x\n');
+        this.onHold = true;
+    }
+
+    // Quitar la espera (RESUME)
+    resume() {
+        if (!this.process || !this.process.stdin) {
+            console.warn('[BARESIP WRAPPER] resume: process not running');
+            return;
+        }
+
+        // 'X' = RESUME CALL en la interfaz stdio de baresip
+        this.process.stdin.write('X\n');
+        this.onHold = false;
+    }
+
+    // Alternar entre hold y resume de forma cómoda desde la UI
+    toggleHold() {
+        if (this.onHold) {
+            this.resume();
+        } else {
+            this.hold();
+        }
     }
 
     on(event, callback) {

@@ -72,6 +72,26 @@ class Baresip {
         executeCommand('a');
     }
 
+    hold() {
+    if (!this.process || !this.process.stdin) {
+      console.warn('[BARESIP WRAPPER] hold: process not running')
+      return
+    }
+
+    // 'x' = HOLD CALL en la CLI de baresip
+    this.process.stdin.write('x\n')
+  }
+
+  resume() {
+    if (!this.process || !this.process.stdin) {
+      console.warn('[BARESIP WRAPPER] resume: process not running')
+      return
+    }
+
+    // 'X' = RESUME CALL en la CLI de baresip
+    this.process.stdin.write('X\n')
+  }
+
     dial(phoneNumber) {
         executeCommand(`d${phoneNumber}`);
     }

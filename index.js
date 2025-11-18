@@ -20,10 +20,35 @@ const executeCommand = (command) => {
 };
 
 class Baresip {
-    constructor(processPath, callbacks = {}) {
+    constructor(processPathOrOptions, callbacks = {}) {
         this.connected = false;
-        this.processPath = fixPath(processPath);
         this.callbacks = {};
+
+        // Soportar API antigua (string) y nueva (objeto de opciones)
+        if (typeof processPathOrOptions === 'string') {
+            this.processPath = fixPath(processPathOrOptions);
+            this.processArgs = [];
+        } else {
+            const opts = processPathOrOptions || {};
+
+            // cmd / binary / processPath por orden de prioridad, con "baresip" como fallback
+            this.processPath = fixPath(
+                opts.cmd || opts.binary || opts.processPath || 'baresip',
+            );
+
+            this.processArgs = Array.isArray(opts.args) ? opts.args.slice() : [];
+
+            // Si se pasa configDir, añadimos "-f <configDir>" al principio de los args
+            if (opts.configDir) {
+                this.processArgs.unshift(opts.configDir);
+                this.processArgs.unshift('-f');
+            }
+
+            // Permitir callbacks dentro del objeto de opciones
+            if (opts.callbacks && typeof opts.callbacks === 'object') {
+                callbacks = opts.callbacks;
+            }
+        }
 
         Object.keys(eventRegexps).forEach((event) => {
             this.on(event, callbacks[event] === undefined ? () => {} : callbacks[event]);
@@ -34,6 +59,10 @@ class Baresip {
             'connect',
             'kill',
             'reload',
+            'accept',
+            'dial',
+            'hangUp',
+            'toggleCallMuted',
         ].forEach((method) => {
             this[method] = this[method].bind(this);
         });
@@ -60,6 +89,13 @@ class Baresip {
     }
 
     kill(callback) {
+        if (!this.process || !this.process.pid) {
+            if (callback !== undefined) {
+                callback();
+            }
+            return;
+        }
+
         kill(this.process.pid, 'SIGKILL', (err) => {
             if (!err) {
                 this.connected = false;
@@ -77,7 +113,7 @@ class Baresip {
 
     connect() {
         this.connected = true;
-        this.process = spawn(this.processPath);
+        this.process = spawn(this.processPath, this.processArgs || []);
 
         this.process.stdout.on('data', (data) => {
             const parsedData = `${data}`;

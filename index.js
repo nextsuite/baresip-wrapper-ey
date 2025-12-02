@@ -191,6 +191,7 @@ class Baresip {
       console.warn('[BARESIP WRAPPER] setAudioSource: invalid target');
       return;
     }
+    console.log('[BARESIP WRAPPER] setAudioSource sending:', `ausrc ${target}`);
     this.process.stdin.write(`ausrc ${target}\n`);
   }
 
@@ -213,6 +214,7 @@ class Baresip {
       console.warn('[BARESIP WRAPPER] setAudioPlayer: invalid target');
       return;
     }
+    console.log('[BARESIP WRAPPER] setAudioPlayer sending:', `auplay ${target}`);
     this.process.stdin.write(`auplay ${target}\n`);
   }
 
@@ -226,6 +228,7 @@ class Baresip {
   setAudioDevices(opts) {
     if (!opts || typeof opts !== 'object') return;
     const { source, player } = opts;
+    console.log('[BARESIP WRAPPER] setAudioDevices called with:', { source, player });
     if (source) this.setAudioSource(source);
     if (player) this.setAudioPlayer(player);
   }

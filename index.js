@@ -24,7 +24,6 @@ class Baresip {
     this.connected = false;
     this.callbacks = {};
     this.onHold = false;
-    this._cliCommand = null;
 
     // Soportar API antigua (string) y nueva (objeto de opciones)
     if (typeof processPathOrOptions === 'string') {
@@ -68,7 +67,9 @@ class Baresip {
       'hold',
       'resume',
       'toggleHold',
-      'listAudioDevices',
+      'setAudioSource',
+      'setAudioPlayer',
+      'setAudioDevices',
     ].forEach((method) => {
       this[method] = this[method].bind(this);
     });
@@ -157,11 +158,6 @@ class Baresip {
     this.process.stdout.on('data', (data) => {
       const parsedData = `${data}`;
 
-      // Si hay un comando CLI pendiente (_cliCommand), acumulamos la salida
-      if (this._cliCommand) {
-        this._cliCommand.buffer += parsedData;
-      }
-
       Object.keys(eventRegexps).forEach((event) => {
         const matches = parsedData.match(eventRegexps[event]);
 
@@ -177,104 +173,62 @@ class Baresip {
   }
 
   /**
-   * Ejecuta un comando en la CLI de baresip (vía stdin) y recoge la salida
-   * durante un tiempo corto. Esto se usa para listar dispositivos de audio (ausrc/auplay).
+   * Cambia la fuente de audio (micrófono) de baresip.
+   * Espera el formato completo "driver,device", por ejemplo:
+   *   coreaudio,CSL-303455
+   *   wasapi,Micrófono (Realtek...)
    *
-   * @param {string} command
-   * @param {number} timeoutMs
-   * @returns {Promise<string>}
+   * Internamente ejecuta: ausrc &lt;target&gt;
+   *
+   * @param {string} target
    */
-  _runCliCommand(command, timeoutMs = 400) {
+  setAudioSource(target) {
     if (!this.process || !this.process.stdin) {
-      return Promise.reject(new Error('[BARESIP WRAPPER] process not running'));
+      console.warn('[BARESIP WRAPPER] setAudioSource: process not running');
+      return;
     }
-
-    if (this._cliCommand) {
-      return Promise.reject(
-        new Error('[BARESIP WRAPPER] another CLI command is in progress'),
-      );
+    if (!target || typeof target !== 'string') {
+      console.warn('[BARESIP WRAPPER] setAudioSource: invalid target');
+      return;
     }
-
-    return new Promise((resolve, reject) => {
-      this._cliCommand = { buffer: '' };
-      let finished = false;
-
-      const finish = () => {
-        if (finished) return;
-        finished = true;
-        const output = this._cliCommand ? this._cliCommand.buffer : '';
-        this._cliCommand = null;
-        resolve(output);
-      };
-
-      const timer = setTimeout(finish, timeoutMs);
-
-      try {
-        this.process.stdin.write(`${command}\n`, (err) => {
-          if (err) {
-            clearTimeout(timer);
-            if (!finished) {
-              finished = true;
-              this._cliCommand = null;
-              reject(err);
-            }
-          }
-        });
-      } catch (err) {
-        clearTimeout(timer);
-        if (!finished) {
-          finished = true;
-          this._cliCommand = null;
-          reject(err);
-        }
-      }
-    });
+    this.process.stdin.write(`ausrc ${target}\n`);
   }
 
   /**
-   * Intenta extraer una lista de nombres de dispositivo a partir de la salida
-   * de los comandos ausrc/auplay. Es un parser genérico que se puede afinar
-   * más adelante según el formato real.
+   * Cambia el reproductor de audio (salida) de baresip.
+   * Espera el formato completo "driver,device", por ejemplo:
+   *   coreaudio,Altavoces del Mac mini
+   *   wasapi,Auriculares (Realtek...)
    *
-   * @param {string} output
-   * @returns {string[]}
+   * Internamente ejecuta: auplay &lt;target&gt;
+   *
+   * @param {string} target
    */
-  _parseAudioList(output) {
-    if (!output) return [];
-
-    return output
-      .split('\n')
-      .map((line) => line.trim())
-      .filter((line) => {
-        if (!line) return false;
-        const lower = line.toLowerCase();
-        // Filtramos prompts y líneas claramente no relevantes
-        if (lower.startsWith('&gt;') || lower.startsWith('>')) return false;
-        if (lower.includes('usage')) return false;
-        return true;
-      });
+  setAudioPlayer(target) {
+    if (!this.process || !this.process.stdin) {
+      console.warn('[BARESIP WRAPPER] setAudioPlayer: process not running');
+      return;
+    }
+    if (!target || typeof target !== 'string') {
+      console.warn('[BARESIP WRAPPER] setAudioPlayer: invalid target');
+      return;
+    }
+    this.process.stdin.write(`auplay ${target}\n`);
   }
 
   /**
-   * Devuelve la lista de dispositivos de entrada y salida que baresip ve
-   * usando los comandos "ausrc" (entradas) y "auplay" (salidas).
+   * Helper conveniente para cambiar fuente y salida en una sola llamada.
+   * Espera un objeto del tipo:
+   *   { source: 'driver,device', player: 'driver,device' }
    *
-   * @returns {Promise<{inputs: string[], outputs: string[]}>}
+   * @param {{ source?: string, player?: string }} opts
    */
-async listAudioDevices() {
-  if (!this.process || !this.process.stdin) {
-    throw new Error('[BARESIP WRAPPER] process not running');
+  setAudioDevices(opts) {
+    if (!opts || typeof opts !== 'object') return;
+    const { source, player } = opts;
+    if (source) this.setAudioSource(source);
+    if (player) this.setAudioPlayer(player);
   }
-
-  // Damos más tiempo para que baresip responda
-  const ausrcOutput = await this._runCliCommand('ausrc', 1500);
-  const auplayOutput = await this._runCliCommand('auplay', 1500);
-
-  const inputs = this._parseAudioList(ausrcOutput);
-  const outputs = this._parseAudioList(auplayOutput);
-
-  return { inputs, outputs };
-}
 }
 
 module.exports = Baresip;

@@ -261,19 +261,20 @@ class Baresip {
    *
    * @returns {Promise<{inputs: string[], outputs: string[]}>}
    */
-  async listAudioDevices() {
-    if (!this.process || !this.process.stdin) {
-      throw new Error('[BARESIP WRAPPER] process not running');
-    }
-
-    const ausrcOutput = await this._runCliCommand('ausrc');
-    const auplayOutput = await this._runCliCommand('auplay');
-
-    const inputs = this._parseAudioList(ausrcOutput);
-    const outputs = this._parseAudioList(auplayOutput);
-
-    return { inputs, outputs };
+async listAudioDevices() {
+  if (!this.process || !this.process.stdin) {
+    throw new Error('[BARESIP WRAPPER] process not running');
   }
+
+  // Damos más tiempo para que baresip responda
+  const ausrcOutput = await this._runCliCommand('ausrc', 1500);
+  const auplayOutput = await this._runCliCommand('auplay', 1500);
+
+  const inputs = this._parseAudioList(ausrcOutput);
+  const outputs = this._parseAudioList(auplayOutput);
+
+  return { inputs, outputs };
+}
 }
 
 module.exports = Baresip;

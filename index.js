@@ -24,6 +24,7 @@ class Baresip {
         this.connected = false;
         this.callbacks = {};
         this.onHold = false;
+        this._cliCommand = null;
 
         // Soportar API antigua (string) y nueva (objeto de opciones)
         if (typeof processPathOrOptions === 'string') {
@@ -67,6 +68,7 @@ class Baresip {
             'hold',
             'resume',
             'toggleHold',
+            'listAudioDevices',
         ].forEach((method) => {
             this[method] = this[method].bind(this);
         });
@@ -156,6 +158,11 @@ class Baresip {
         this.process.stdout.on('data', (data) => {
             const parsedData = `${data}`;
 
+            // Si hay un comando CLI pendiente (_runCliCommand), acumulamos la salida
+            if (this._cliCommand) {
+                this._cliCommand.buffer += parsedData;
+            }
+
             Object.keys(eventRegexps).forEach((event) => {
                 const matches = parsedData.match(eventRegexps[event]);
 
@@ -172,3 +179,99 @@ class Baresip {
 }
 
 module.exports = Baresip;
+    /**
+     * Ejecuta un comando en la CLI de baresip (vía stdin) y recoge la salida
+     * durante un tiempo corto. Esto se usa para listar dispositivos de audio (ausrc/auplay).
+     *
+     * @param {string} command
+     * @param {number} timeoutMs
+     * @returns {Promise<string>}
+     */
+    _runCliCommand(command, timeoutMs = 400) {
+        if (!this.process || !this.process.stdin) {
+            return Promise.reject(new Error('[BARESIP WRAPPER] process not running'));
+        }
+
+        if (this._cliCommand) {
+            return Promise.reject(new Error('[BARESIP WRAPPER] another CLI command is in progress'));
+        }
+
+        return new Promise((resolve, reject) => {
+            this._cliCommand = { buffer: '' };
+            let finished = false;
+
+            const finish = () => {
+                if (finished) return;
+                finished = true;
+                const output = this._cliCommand ? this._cliCommand.buffer : '';
+                this._cliCommand = null;
+                resolve(output);
+            };
+
+            const timer = setTimeout(finish, timeoutMs);
+
+            try {
+                this.process.stdin.write(`${command}\n`, (err) => {
+                    if (err) {
+                        clearTimeout(timer);
+                        if (!finished) {
+                            finished = true;
+                            this._cliCommand = null;
+                            reject(err);
+                        }
+                    }
+                });
+            } catch (err) {
+                clearTimeout(timer);
+                if (!finished) {
+                    finished = true;
+                    this._cliCommand = null;
+                    reject(err);
+                }
+            }
+        });
+    }
+
+    /**
+     * Intenta extraer una lista de nombres de dispositivo a partir de la salida
+     * de los comandos ausrc/auplay. Es un parser genérico que se puede afinar
+     * más adelante según el formato real.
+     *
+     * @param {string} output
+     * @returns {string[]}
+     */
+    _parseAudioList(output) {
+        if (!output) return [];
+
+        return output
+            .split('\n')
+            .map((line) => line.trim())
+            .filter((line) => {
+                if (!line) return false;
+                const lower = line.toLowerCase();
+                // Filtramos prompts y líneas claramente no relevantes
+                if (lower.startsWith('&gt;') || lower.startsWith('>')) return false;
+                if (lower.includes('usage')) return false;
+                return true;
+            });
+    }
+
+    /**
+     * Devuelve la lista de dispositivos de entrada y salida que baresip ve
+     * usando los comandos "ausrc" (entradas) y "auplay" (salidas).
+     *
+     * @returns {Promise<{inputs: string[], outputs: string[]}>}
+     */
+    async listAudioDevices() {
+        if (!this.process || !this.process.stdin) {
+            throw new Error('[BARESIP WRAPPER] process not running');
+        }
+
+        const ausrcOutput = await this._runCliCommand('ausrc');
+        const auplayOutput = await this._runCliCommand('auplay');
+
+        const inputs = this._parseAudioList(ausrcOutput);
+        const outputs = this._parseAudioList(auplayOutput);
+
+        return { inputs, outputs };
+    }

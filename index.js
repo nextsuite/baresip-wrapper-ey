@@ -76,19 +76,52 @@ class Baresip {
   }
 
   accept() {
-    executeCommand('a');
+    if (!this.process || !this.process.stdin) {
+      console.warn('[BARESIP WRAPPER] accept: process not running');
+      return;
+    }
+
+    console.log('[BARESIP WRAPPER] accept: sending "a" via stdin');
+    // Equivalente a pulsar la tecla "a" en la consola interactiva de baresip
+    this.process.stdin.write('a\n');
   }
 
   dial(phoneNumber) {
-    executeCommand(`d${phoneNumber}`);
+    if (!this.process || !this.process.stdin) {
+      console.warn('[BARESIP WRAPPER] dial: process not running');
+      return;
+    }
+    if (!phoneNumber) {
+      console.warn('[BARESIP WRAPPER] dial: phoneNumber vacío');
+      return;
+    }
+
+    const cmd = `d${phoneNumber}`;
+    console.log('[BARESIP WRAPPER] dial: sending via stdin ->', cmd);
+    // Equivalente a teclear: d&lt;numero&gt; + Enter en la CLI de baresip
+    this.process.stdin.write(cmd + '\n');
   }
 
   hangUp() {
-    executeCommand('b');
+    if (!this.process || !this.process.stdin) {
+      console.warn('[BARESIP WRAPPER] hangUp: process not running');
+      return;
+    }
+
+    console.log('[BARESIP WRAPPER] hangUp: sending "b" via stdin');
+    // Equivalente a pulsar la tecla "b" (Hangup call)
+    this.process.stdin.write('b\n');
   }
 
   toggleCallMuted() {
-    executeCommand('m');
+    if (!this.process || !this.process.stdin) {
+      console.warn('[BARESIP WRAPPER] toggleCallMuted: process not running');
+      return;
+    }
+
+    console.log('[BARESIP WRAPPER] toggleCallMuted: sending "m" via stdin');
+    // "m" = mute/unmute en la CLI de baresip
+    this.process.stdin.write('m\n');
   }
 
   // Poner la llamada en espera (HOLD) usando la CLI de baresip (stdio)
